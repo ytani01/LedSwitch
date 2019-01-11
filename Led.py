@@ -4,7 +4,6 @@
 #
 import RPi.GPIO as GPIO
 import threading
-import queue
 import time
 
 import click
@@ -20,13 +19,13 @@ handler.setFormatter(handler_fmt)
 logger.addHandler(handler)
 logger.propagate = False
 
-class Led:
+class _Led:
     '''Primitive LED class
     '''
     def __init__(self, pin):
         self.logger = logger.getChild(__class__.__name__)
         self.logger.debug('')
-        if pin == 0:
+        if not pin:
             return None
 
         self.pin = pin
@@ -57,10 +56,14 @@ class Led:
         self.logger.debug('')
         GPIO.output(self.pin, GPIO.LOW)
 
-class BlinkLed(Led):
+class Led(_Led):
     '''LED class
 
     support blink
+
+    IMPORTANT:
+    don't forget to off() after blink()
+
     '''
     def __init__(self, pin):
         self.logger = logger.getChild(__class__.__name__)
@@ -73,8 +76,13 @@ class BlinkLed(Led):
         self.tmr     = None
         
         super().__init__(self.pin)
+        self.logger = logger.getChild(__class__.__name__)
 
-    def blink_start(self, on_sec, off_sec):
+    def __exit__(self, ex_type, ex_value, trace):
+        self.logger.debug('%s, %s, %s', ex_type, ex_value, trace)
+        self.off()
+        
+    def blink(self, on_sec=0.5, off_sec=0.5):
         self.logger.debug('on_sec=%d, off_sec=%d', on_sec, off_sec)
         
         self.on_sec  = on_sec
@@ -82,65 +90,64 @@ class BlinkLed(Led):
 
         self.off()
 
-        self.blink_on()
+        self._blink_on()
 
     def off(self):
         self.logger.debug('')
 
         if self.tmr:
             self.tmr.cancel()
+            self.tmr.join()
         super().off()
 
-    def blink_on(self):
+    def _blink_on(self):
         self.logger.debug('')
 
-        self.tmr = threading.Timer(self.on_sec,  self.blink_off)
+        self.tmr = threading.Timer(self.on_sec,  self._blink_off)
         super().on()
         self.tmr.start()
 
-    def blink_off(self):
+    def _blink_off(self):
         self.logger.debug('')
 
-        self.tmr = threading.Timer(self.off_sec, self.blink_on)
+        self.tmr = threading.Timer(self.off_sec, self._blink_on)
         super().off()
         self.tmr.start()
-        
+
 def app(pin, debug):
     logger.debug('pin=%d', pin)
 
-    bl = BlinkLed(pin)
-    for s in [0.01, 0.015, 0.02, 0.03, 0.05]:
-        print(s)
-        bl.blink_start(s, s)
-        time.sleep(4)
-    bl.off()
-
-    time.sleep(2)
-
-    with BlinkLed(pin) as bl:
-        for s in [1, 2]:
-            print(s)
-            bl.blink_start(s, s)
-            time.sleep(4)
-
-    time.sleep(2)
-
-    led = Led(pin)
-    led.on()
-    time.sleep(1.0)
-    led.off()
-
-    time.sleep(2)
-
-    with Led(pin) as l:
-        l.on()
+    with Led(pin) as led:
+        led.on()
         time.sleep(1)
-        l.off()
+        led.off()
+        time.sleep(1)
+
+        for s in [0.02, 0.5]:
+            print(s)
+            led.blink(s, s)
+            time.sleep(3)
+
+    logger.debug('AAA')
+
+    l = Led(pin)
+    l.on()
+    time.sleep(1)
+    l.off()
+    time.sleep(1)
+    
+    for s in [0.02, 0.5]:
+        print(s)
+        l.blink(s, s)
+        time.sleep(3)
+    l.off()	# Important !
+
+    logger.debug('BBB')
 
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
-@click.argument('pin', metavar='<pin>', type=int, default=0)
+@click.argument('pin', metavar='<pin>', type=int, nargs=1)
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
 def main(pin, debug):
