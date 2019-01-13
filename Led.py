@@ -10,7 +10,7 @@ import click
 
 from logging import getLogger, StreamHandler, Formatter, DEBUG, INFO, WARN
 logger = getLogger(__name__)
-logger.setLevel(DEBUG)
+logger.setLevel(INFO)
 handler = StreamHandler()
 handler.setLevel(DEBUG)
 handler_fmt = Formatter('%(asctime)s %(levelname)s %(name)s.%(funcName)s> %(message)s',
