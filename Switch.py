@@ -22,7 +22,7 @@ logger.propagate = False
 class Switch:
     '''Primitive Switch class
     '''
-    SW_BOUNCE_MSEC = 10
+    SW_BOUNCE_MSEC = 150
     LONG_PUSH_MSEC = 500
     CLICK_INTERVAL = 200
     ACTION = ['push', 'long_push', 'release', 'click']
@@ -36,8 +36,12 @@ class Switch:
         
         if self.pull_up:
             self.pud = GPIO.PUD_UP
+            self.event_edge = GPIO.FALLING
+            self.ON = GPIO.LOW
         else:
             self.pud = GPIO.PUD_DOWN
+            self.event_dege = GPIO.RISING
+            self.ON = GPIO.HIGH
 
         self.callback = {}
         for c in __class__.ACTION:
@@ -46,6 +50,11 @@ class Switch:
         self.on = False
         self.on_count = 0
         self.on_start = 0
+        self.on_sec = 0
+        self.prev_sec = 0
+        self.prev_val = -1
+
+        self.tmr = threading.Timer(0, self.cbk_timer)
         
         self.enable()
         
@@ -54,7 +63,7 @@ class Switch:
         GPIO.setup(self.pin, GPIO.IN, pull_up_down=self.pud)
         GPIO.add_event_detect(self.pin, GPIO.BOTH,
                               callback=self.handle,
-                              bouncetime=__class__.SW_BOUNCE_MSEC)
+                              bouncetime=5)
 
     def disable(self):
         self.logger.debug('')
@@ -75,30 +84,66 @@ class Switch:
         self.disable()
         
     def handle(self, pin):
-        self.logger.debug('pin=%d', pin)
+        now_sec = time.time()
+        val = GPIO.input(pin)
+
+        while val == self.prev_val:
+            self.logger.debug('val == prev_val? .. ignore')
+            if val != self.ON:
+                self.prev_val = val
+                return
+            val = GPIO.input(pin)
+            self.logger.debug('val=%d', val)
+            #return
+
+        if (now_sec - self.prev_sec) * 1000 < __class__.SW_BOUNCE_MSEC:
+            return
+        self.prev_sec = now_sec
+
         if pin != self.pin:
             self.logger.warning('pin=%d not equal to self.pin=%d ??', pin, self.pin)
             return
-
-        now_sec = time.time()
         
-        val = GPIO.input(self.pin)
-        self.logger.debug('val=%d', val)
+        self.logger.debug('%d === pin=%d, val=%d', now_sec * 1000 % 10000, pin, val)
 
-        self.on = False
-        if self.pull_up and val == GPIO.LOW:
-            self.on = True
-        if not self.pull_up and val == GPIO.HIGH:
-            self.on = True
-        self.logger.debug('self.on=%d', self.on)
+        self.prev_val = val
+
+        if val != self.ON:
+            self.logger.debug('OFF')
+            return
+
+        if not self.tmr.is_alive():
+            self.tmr = threading.Timer(__class__.LONG_PUSH_MSEC/1000, self.cbk_timer)
+            self.tmr.start()
+            self.logger.debug('tmr start')
+        else:
+            self.logger.debug('tmr=%s:%s', self.tmr, self.tmr.is_alive())
+
+        self.on_count += 1
+        if self.on_count == 1:
+            self.on_start = now_sec
+
+        self.logger.debug('on_count=%d', self.on_count)
+
+    def cbk_timer(self):
+        now_sec = time.time()
+        val = GPIO.input(self.pin)
+
+        self.on       = (val == self.ON)
+        self.on_sec   = now_sec - self.on_start
+        self.logger.debug('%d ---', now_sec * 1000 % 10000)
+        self.logger.debug('val=%d', val)
+        self.logger.debug('self.on=%s', self.on)
+        self.logger.debug('self.on_count=%d', self.on_count)
+        self.logger.debug('self.on_sec=%.3f', self.on_sec)
 
         if self.on:
-            self.on_count += 1
-            if self.on_count == 1:
-                self.on_start = now_sec
-            self.on_sec = now_sec - self.on_start
-
-        self.logger.debug('on_count=%d, on_sec=%f', self.on_count, self.on_sec)
+            self.logger.debug('* long[%d]', self.on_count)
+        else:
+            self.logger.debug('* click[%d]', self.on_count)
+        
+        self.on_count = 0
+        self.on_sec   = 0
                 
 def app(pin, debug):
     logger.debug('pin=%d', pin)

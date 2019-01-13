@@ -19,14 +19,12 @@ handler.setFormatter(handler_fmt)
 logger.addHandler(handler)
 logger.propagate = False
 
-class _Led:
+class SimpleLed:
     '''Primitive LED class
     '''
     def __init__(self, pin):
         self.logger = logger.getChild(__class__.__name__)
-        self.logger.debug('')
-        if not pin:
-            return None
+        self.logger.debug('pin = %d', pin)
 
         self.pin = pin
         GPIO.setup(self.pin, GPIO.OUT)
@@ -56,7 +54,7 @@ class _Led:
         self.logger.debug('')
         GPIO.output(self.pin, GPIO.LOW)
 
-class Led(_Led):
+class Led(SimpleLed):
     '''LED class
 
     support blink
@@ -66,17 +64,13 @@ class Led(_Led):
 
     '''
     def __init__(self, pin):
-        self.logger = logger.getChild(__class__.__name__)
-        self.logger.debug('pin=%d', pin)
-        
-        self.pin     = pin
-
         self.on_sec  = None
         self.off_sec = None
         self.tmr     = None
-        
-        super().__init__(self.pin)
+        super().__init__(pin)
+
         self.logger = logger.getChild(__class__.__name__)
+        self.logger.debug('pin = %d', self.pin)
 
     def __exit__(self, ex_type, ex_value, trace):
         self.logger.debug('%s, %s, %s', ex_type, ex_value, trace)
@@ -117,19 +111,6 @@ class Led(_Led):
 def app(pin, debug):
     logger.debug('pin=%d', pin)
 
-    with Led(pin) as led:
-        led.on()
-        time.sleep(1)
-        led.off()
-        time.sleep(1)
-
-        for s in [0.02, 0.5]:
-            print(s)
-            led.blink(s, s)
-            time.sleep(3)
-
-    logger.debug('AAA')
-
     l = Led(pin)
     l.on()
     time.sleep(1)
@@ -142,7 +123,17 @@ def app(pin, debug):
         time.sleep(3)
     l.off()	# Important !
 
-    logger.debug('BBB')
+    with Led(pin) as led:
+        led.on()
+        time.sleep(1)
+        led.off()
+        time.sleep(1)
+
+        for s in [0.02, 0.5]:
+            print(s)
+            led.blink(s, s)
+            time.sleep(3)
+    # In this case, off() is not necessary (off() is called auotmatically)
 
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
