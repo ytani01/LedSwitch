@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# (C) 2018 Yoichi Tanibayashi
+# (C) 2019 Yoichi Tanibayashi
 #
 import RPi.GPIO as GPIO
 import threading

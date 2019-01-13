@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+#
+# (c) 2019 Yoichi Tanibayashi
 
 import RPi.GPIO as GPIO
 from Led import Led
