@@ -20,13 +20,13 @@ handler.setFormatter(handler_fmt)
 logger.addHandler(handler)
 logger.propagate = False
 
-class SwitchListener(threading.Thread):
+class ButtonListener(threading.Thread):
     def __init__(self, pin, callback_func,
                  sw_loop_interval=0.02, timeout_sec=[0.7, 1, 3, 5],
                  debug=False):
 
         self.callback_func = callback_func
-        self.sw = Switch(pin, sw_loop_interval, timeout_sec, debug)
+        self.sw = Button(pin, sw_loop_interval, timeout_sec, debug)
         self.sw.start()
 
         super().__init__(daemon=True)
@@ -36,7 +36,7 @@ class SwitchListener(threading.Thread):
             event = self.sw.event_get()
             self.callback_func(self.sw, event)
 
-class SwitchTimer:
+class ButtonTimer:
     def __init__(self, loop_interval, timeout_sec=[0.7, 1, 3, 5]):
         self.loop_interval = loop_interval
         self.timeout_sec   = timeout_sec
@@ -64,20 +64,20 @@ class SwitchTimer:
             self.stop()
 
 ###
-class SwitchEvent():
-    def __init__(self, name, timeout_idx, value, count):
+class ButtonEvent():
+    def __init__(self, name, timeout_idx, value, push_count):
         self.name = name
         self.timeout_idx = timeout_idx
         self.value = value
-        self.count = count
+        self.push_count = push_count
 
     def print(self):
         print('name: %s'  % self.name)
         print('  timeout_idx: %d' % self.timeout_idx)
         print('  value      : %s' % self.value)
-        print('  count      : %d' % self.count)
+        print('  push_count : %d' % self.push_count)
 
-class Switch(threading.Thread):
+class Button(threading.Thread):
     ONOFF = ['ON', 'OFF']
     
     def __init__(self, pin, interval=0.02, timeout_sec=[0.7, 1, 3, 5],
@@ -97,20 +97,20 @@ class Switch(threading.Thread):
         GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
         self.event = queue.Queue()
-        self.timer = SwitchTimer(self.loop_interval, self.timeout_sec)
+        self.timer = ButtonTimer(self.loop_interval, self.timeout_sec)
         
         self.val        = 1.0
         self.prev_val01 = __class__.ONOFF.index('OFF')
-        self.on_count   = 0
+        self.push_count   = 0
 
         super().__init__(daemon=True)
 
-    def event_put(self, event_name, timeout_idx, val, on_count):
+    def event_put(self, event_name, timeout_idx, val, push_count):
         event = {
             'name'        : event_name,
             'timeout_idx' : timeout_idx,
             'value'       : self.value2str(val),
-            'count'       : on_count	}
+            'count'       : push_count	}
         
         self.event.put(event)
 
@@ -152,7 +152,7 @@ class Switch(threading.Thread):
             if val01 == self.value('OFF'):
                 timeout_idx = self.timer.timeout_idx
                 if timeout_idx != 0:
-                    self.on_count = 0
+                    self.push_count = 0
                 if timeout_idx >= 1:
                     self.timer.stop()
                 
@@ -160,18 +160,20 @@ class Switch(threading.Thread):
                 self.logger.debug('val01=%d', val01)
 
                 if val01 == 0:	# pressed
-                    self.on_count += 1
-                    if self.on_count == 1:
+                    self.push_count += 1
+                    if self.push_count == 1:
                         self.timer.start()
                         
-                    self.event_put('pressed',
-                                   self.timer.timeout_idx, val01,
-                                   self.on_count)
+                    self.event.put(ButtonEvent('pressed',
+                                               self.timer.timeout_idx,
+                                               self.value2str(val01),
+                                               self.push_count))
 
                 if val01 == 1:	# released
-                    self.event_put('released',
-                                   self.timer.timeout_idx, val01,
-                                   self.on_count)
+                    self.event.put(ButtonEvent('released',
+                                               self.timer.timeout_idx,
+                                               self.value2str(val01),
+                                               self.push_count))
                     
                 self.prev_val01 = val01
 
@@ -179,12 +181,13 @@ class Switch(threading.Thread):
                 if self.timer.is_expired():
                     self.logger.debug('timer.timeout_idx = %d',
                                       self.timer.timeout_idx)
-                    self.logger.debug('  on_count  = %d', self.on_count)
+                    self.logger.debug('  push_count  = %d', self.push_count)
                     self.logger.debug('  val01     = %d', val01)
                         
-                    self.event_put('timer',
-                                   self.timer.timeout_idx, val01,
-                                   self.on_count)
+                    self.event.put(ButtonEvent('timer',
+                                               self.timer.timeout_idx,
+                                               self.value2str(val01),
+                                               self.push_count))
 
                     self.timer.next_timeout()
                 
@@ -195,27 +198,15 @@ class Switch(threading.Thread):
 #
 #
 def cb(sw, event):
-    sw.event_print(event)
+    event.print()
 
 def app(pin, debug):
     logger.debug('pin=%d', pin)
 
-    sw = SwitchListener(pin, cb, debug=debug)
+    sw = ButtonListener(pin, cb, debug=debug)
     sw.start()
     while True:
         time.sleep(1)
-
-    #####
-    sw = Switch(pin, debug)
-    sw.start()
-
-    while True:
-        event = sw.event_get()
-        print('!!! %-8s %d %-3s %d' % (event['name'],
-                                       event['timeout_idx'],
-                                       event['value'],
-                                       event['count']))
-        time.sleep(0.1)
 
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
@@ -224,14 +215,6 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
 def main(pin, debug):
-    '''Switch class sample program
-
-Arguments:
-
-    <pin>
-    GPIO pin (BCM)
-    '''
-    
     logger.setLevel(INFO)
     if debug:
         logger.setLevel(DEBUG)
