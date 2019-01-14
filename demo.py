@@ -4,17 +4,17 @@
 
 import RPi.GPIO as GPIO
 from Led import Led
-from Button import Button, ButtonListener
+from Switch import Switch, SwitchListener
 import time
 
 PIN_LED    = 26
-PIN_BUTTON = 20
+PIN_SWITCH = 20
 
 class demo:
     def __init__(self, interval=0.02, timeout_sec=[0.7, 1, 4, 7, 10],
                  debug=False):
 
-        self.sw = ButtonListener(PIN_BUTTON, self.sw_callback,
+        self.sw = SwitchListener(PIN_SWITCH, self.sw_callback,
                                  interval, timeout_sec, debug)
         self.sw.start()
 
@@ -23,8 +23,9 @@ class demo:
         self.active = True
         
     def main(self):
+        start_sec = time.time()
         while self.active:
-            print('main>', time.time())
+            print('main> %.1f' % ((time.time() - start_sec)))
             time.sleep(1)
         self.led.off()
 

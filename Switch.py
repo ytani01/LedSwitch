@@ -20,13 +20,13 @@ handler.setFormatter(handler_fmt)
 logger.addHandler(handler)
 logger.propagate = False
 
-class ButtonListener(threading.Thread):
+class SwitchListener(threading.Thread):
     def __init__(self, pin, callback_func,
                  sw_loop_interval=0.02, timeout_sec=[0.7, 1, 3, 5],
                  debug=False):
 
         self.callback_func = callback_func
-        self.sw = Button(pin, sw_loop_interval, timeout_sec, debug)
+        self.sw = Switch(pin, sw_loop_interval, timeout_sec, debug)
         self.sw.start()
 
         super().__init__(daemon=True)
@@ -36,7 +36,7 @@ class ButtonListener(threading.Thread):
             event = self.sw.event_get()
             self.callback_func(self.sw, event)
 
-class ButtonTimer:
+class SwitchTimer:
     def __init__(self, loop_interval, timeout_sec=[0.7, 1, 3, 5]):
         self.loop_interval = loop_interval
         self.timeout_sec   = timeout_sec
@@ -64,7 +64,7 @@ class ButtonTimer:
             self.stop()
 
 ###
-class ButtonEvent():
+class SwitchEvent():
     def __init__(self, name, timeout_idx, value, push_count):
         self.name = name
         self.timeout_idx = timeout_idx
@@ -77,7 +77,7 @@ class ButtonEvent():
         print('  value      : %s' % self.value)
         print('  push_count : %d' % self.push_count)
 
-class Button(threading.Thread):
+class Switch(threading.Thread):
     ONOFF = ['ON', 'OFF']
     
     def __init__(self, pin, interval=0.02, timeout_sec=[0.7, 1, 3, 5],
@@ -97,7 +97,7 @@ class Button(threading.Thread):
         GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
         self.event = queue.Queue()
-        self.timer = ButtonTimer(self.loop_interval, self.timeout_sec)
+        self.timer = SwitchTimer(self.loop_interval, self.timeout_sec)
         
         self.val        = 1.0
         self.prev_val01 = __class__.ONOFF.index('OFF')
@@ -164,13 +164,13 @@ class Button(threading.Thread):
                     if self.push_count == 1:
                         self.timer.start()
                         
-                    self.event.put(ButtonEvent('pressed',
+                    self.event.put(SwitchEvent('pressed',
                                                self.timer.timeout_idx,
                                                self.value2str(val01),
                                                self.push_count))
 
                 if val01 == 1:	# released
-                    self.event.put(ButtonEvent('released',
+                    self.event.put(SwitchEvent('released',
                                                self.timer.timeout_idx,
                                                self.value2str(val01),
                                                self.push_count))
@@ -184,7 +184,7 @@ class Button(threading.Thread):
                     self.logger.debug('  push_count  = %d', self.push_count)
                     self.logger.debug('  val01     = %d', val01)
                         
-                    self.event.put(ButtonEvent('timer',
+                    self.event.put(SwitchEvent('timer',
                                                self.timer.timeout_idx,
                                                self.value2str(val01),
                                                self.push_count))
@@ -203,7 +203,7 @@ def cb(sw, event):
 def app(pin, debug):
     logger.debug('pin=%d', pin)
 
-    sw = ButtonListener(pin, cb, debug=debug)
+    sw = SwitchListener(pin, cb, debug=debug)
     sw.start()
     while True:
         time.sleep(1)
