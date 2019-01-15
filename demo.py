@@ -6,19 +6,31 @@ import RPi.GPIO as GPIO
 from Led import Led
 from Switch import Switch, SwitchListener
 import time
+import click
 
 PIN_LED    = 26
-PIN_SWITCH = 20
 
 class demo:
-    def __init__(self, interval=0.02, timeout_sec=[0.7, 1, 4, 7, 10],
-                 debug=False):
+    def __init__(self, pin_led, pin_sw, debug=False):
+        self.pin_led = pin_led
+        self.pin_sw  = pin_sw
 
-        self.sw = SwitchListener(PIN_SWITCH, self.sw_callback,
-                                 interval, timeout_sec, debug)
+        self.long_press = [
+            {'timeout':0.7, 'blink':{'on':1,    'off':0}},
+            {'timeout':1,   'blink':{'on':0.2,  'off':0.04}},
+            {'timeout':3,   'blink':{'on':0.1,  'off':0.04}},
+            {'timeout':5,   'blink':{'on':0.04, 'off':0.04}},
+            {'timeout':7,   'blink':{'on':0,    'off':0}}]
+
+        self.timeout_sec = []
+        for i in range(len(self.long_press)):
+            self.timeout_sec.append(self.long_press[i]['timeout'])
+
+        self.sw = SwitchListener(self.pin_sw, self.sw_callback,
+                                 timeout_sec=self.timeout_sec, debug=debug)
         self.sw.start()
 
-        self.led = Led(PIN_LED)
+        self.led = Led(self.pin_led)
 
         self.active = True
         
@@ -34,29 +46,30 @@ class demo:
 
         if event.name == 'pressed':
             self.led.on()
+
         if event.name == 'released':
             self.led.off()
+
         if event.name == 'timer':
-            if event.timeout_idx == 0 and event.value == 'OFF':
-                self.led.off()
-                for i in range(event.push_count):
-                    time.sleep(0.4)
-                    self.led.on()
-                    time.sleep(0.4)
+            idx = event.timeout_idx
+
+            if idx == 0:		# マルチクリック回数確定
+                if event.value == 'OFF':
                     self.led.off()
-            # 長押し
-            if event.timeout_idx == 1:
-                self.led.off()
-                self.led.blink(0.2, 0.05)
-            if event.timeout_idx == 2:
-                self.led.off()
-                self.led.blink(0.1, 0.05)
-            if event.timeout_idx == 3:
-                self.led.off()
-                self.led.blink(0.05, 0.05)
-            if event.timeout_idx == 4:
-                self.led.off()
-                self.active = False
+                    for i in range(event.push_count):
+                        time.sleep(0.4)
+                        self.led.on()
+                        time.sleep(0.4)
+                        self.led.off()
+
+            if idx >= 1:		# 長押し
+                if idx < len(self.long_press) - 1:
+                    self.led.off()
+                    self.led.blink(self.long_press[idx]['blink']['on'],
+                                   self.long_press[idx]['blink']['off'])
+                else:
+                    self.led.off()
+                    self.active = False
 
 def setup_GPIO():
     GPIO.setwarnings(False)
@@ -65,10 +78,16 @@ def setup_GPIO():
 def cleanup_GPIO():
     GPIO.cleanup()
 
-def main():
+CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+@click.command(context_settings=CONTEXT_SETTINGS)
+@click.option('--led',    '-l', 'pin_led', type=int, default=26,
+              help='LED pin')
+@click.option('--switch', '-s', 'pin_sw',  type=int, default=20,
+              help='Switch pin')
+def main(pin_led, pin_sw):
     setup_GPIO()
     try:
-        demo().main()
+        demo(pin_led, pin_sw).main()
     finally:
         cleanup_GPIO()
 

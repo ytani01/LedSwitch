@@ -90,23 +90,27 @@ class Led(SimpleLed):
         self.logger.debug('')
 
         if self.tmr:
-            self.tmr.cancel()
-            self.tmr.join()
+            try:
+                self.tmr.cancel()
+                self.tmr.join()
+            except Exception as e:
+                self.logger.warning('%s:%s', type(e), e)
+                
         super().off()
 
     def _blink_on(self):
         self.logger.debug('')
 
         self.tmr = threading.Timer(self.on_sec,  self._blink_off)
-        super().on()
         self.tmr.start()
+        super().on()
 
     def _blink_off(self):
         self.logger.debug('')
 
         self.tmr = threading.Timer(self.off_sec, self._blink_on)
-        super().off()
         self.tmr.start()
+        super().off()
 
 def app(pin, debug):
     logger.debug('pin=%d', pin)
