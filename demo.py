@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+<#!/usr/bin/env python3
 #
 # (c) 2019 Yoichi Tanibayashi
 
@@ -7,8 +7,6 @@ from Led import Led
 from Switch import Switch, SwitchListener
 import time
 import click
-
-PIN_LED    = 26
 
 class demo:
     def __init__(self, pin_led, pin_sw, debug=False):
