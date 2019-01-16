@@ -22,14 +22,17 @@ handler_fmt = Formatter(
 handler.setFormatter(handler_fmt)
 logger.addHandler(handler)
 logger.propagate = False
+def init_logger(name, debug):
+    l = logger.getChild(name)
+    if debug:
+        l.setLevel(DEBUG)
+    else:
+        l.setLevel(INFO)
+    return l
 
 class RotaryEncoderListener(threading.Thread):
     def __init__(self, pin, cb_func, sw_loop_interval=0.001, debug=False):
-        self.logger = logger.getChild(__class__.__name__)
-        if debug:
-            self.logger.setLevel(DEBUG)
-        else:
-            self.logger.setLevel(INFO)
+        self.logger = init_logger(__class__.__name__, debug)
 
         self.logger.debug('pin=%s, interval=%f', pin, sw_loop_interval)
 
@@ -61,11 +64,7 @@ class RotaryEncoder:
     CCW = -1
 
     def __init__(self, pin, q, sw_loop_interval=0.001, debug=False):
-        self.logger = logger.getChild(__class__.__name__)
-        if debug:
-            self.logger.setLevel(DEBUG)
-        else:
-            self.logger.setLevel(INFO)
+        self.logger = init_logger(__class__.__name__, debug)
 
         self.logger.debug('%s', pin)
         
@@ -98,7 +97,7 @@ class RotaryEncoder:
         else:
             v = self.CCW
                 
-        self.logger.debug('stat=%s, v=%s', self.stat, self.val2str(v))
+        self.logger.debug('stat=%s, v=%d:%s', self.stat, v, self.val2str(v))
 
         self.q.put(v)
 
@@ -113,11 +112,7 @@ class RotaryEncoder:
 #####
 class app:
     def __init__(self, pin, debug):
-        self.logger = logger.getChild(__class__.__name__)
-        if debug:
-            self.logger.setLevel(DEBUG)
-        else:
-            self.logger.setLevel(INFO)
+        self.logger = init_logger(__class__.__name__, debug)
 
         self.logger.debug('pin=%s', pin)
 
@@ -139,7 +134,7 @@ class app:
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
-@click.argument('pin', type=int, nargs=2)
+@click.argument('pin', metavar='pin1 pin2', type=int, nargs=2)
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
 def main(pin, debug):

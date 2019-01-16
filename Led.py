@@ -64,13 +64,13 @@ class Led(SimpleLed):
 
     '''
     def __init__(self, pin):
+        self.logger = logger.getChild(__class__.__name__)
+        self.logger.debug('pin = %d', pin)
+
         self.on_sec  = None
         self.off_sec = None
         self.tmr     = None
         super().__init__(pin)
-
-        self.logger = logger.getChild(__class__.__name__)
-        self.logger.debug('pin = %d', self.pin)
 
     def __exit__(self, ex_type, ex_value, trace):
         self.logger.debug('%s, %s, %s', ex_type, ex_value, trace)

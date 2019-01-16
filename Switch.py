@@ -20,17 +20,20 @@ handler_fmt = Formatter(
 handler.setFormatter(handler_fmt)
 logger.addHandler(handler)
 logger.propagate = False
+def init_logger(name, debug):
+    l = logger.getChild(name)
+    if debug:
+        l.setLevel(DEBUG)
+    else:
+        l.setLevel(INFO)
+    return l
 
 class SwitchListener(threading.Thread):
     def __init__(self, pin, callback_func,
                  sw_loop_interval=0.02, timeout_sec=[0.7, 1, 3, 5, 7],
                  debug=False):
 
-        self.logger = logger.getChild(__class__.__name__)
-        if debug:
-            self.logger.setLevel(DEBUG)
-        else:
-            self.logger.setLevel(INFO)
+        self.logger = init_logger(__class__.__name__, debug)
             
         self.pin           = pin
         self.callback_func = callback_func
@@ -53,11 +56,7 @@ class SwitchListener(threading.Thread):
 class SwitchTimer:
     def __init__(self, loop_interval, timeout_sec=[0.7, 1, 3, 5, 7],
                  debug=False):
-        self.logger = logger.getChild(__class__.__name__)
-        if debug:
-            self.logger.setLevel(DEBUG)
-        else:
-            self.logger.setLevel(INFO)
+        self.logger = init_logger(__class__.__name__, debug)
 
         self.loop_interval = loop_interval
         self.timeout_sec   = timeout_sec
@@ -70,7 +69,7 @@ class SwitchTimer:
             
     def start(self):
         if len(self.timeout_sec) == 0:
-            self.logger.debug(len(self.timeout_sec))
+            self.logger.debug('ignored')
             self.stop()
             return
         
@@ -100,11 +99,7 @@ class SwitchTimer:
 ###
 class SwitchEvent():
     def __init__(self, pin, name, timeout_idx, value, push_count, debug=False):
-        self.logger = logger.getChild(__class__.__name__)
-        if debug:
-            self.logger.setLevel(DEBUG)
-        else:
-            self.logger.setLevel(INFO)
+        self.logger = init_logger(__class__.__name__, debug)
 
         self.logger.debug('pin=%d, name=%s', pin, name)
 
@@ -140,11 +135,7 @@ class Switch(threading.Thread):
         timeout_sec[0]  timeout(sec) for multi-click
         timeout_sec[1:] timeouts(sec) for long-press (long-long-press ..)
         '''
-        self.logger = logger.getChild(__class__.__name__)
-        if debug:
-            self.logger.setLevel(DEBUG)
-        else:
-            self.logger.setLevel(INFO)
+        self.logger = init_logger(__class__.__name__, debug)
             
         self.logger.debug('pin=%d', pin)
 
@@ -187,7 +178,7 @@ class Switch(threading.Thread):
                     self.timer.stop()
                 
             if onoff != self.prev_onoff:
-                self.logger.debug('onoff=%d', onoff)
+                self.logger.debug('onoff=%d:%s', onoff, self.val2str(onoff))
 
                 if onoff == self.ON:	# pressed
                     self.push_count += 1
