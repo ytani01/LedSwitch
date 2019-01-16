@@ -24,9 +24,8 @@ class demo:
         for i in range(len(self.long_press)):
             self.timeout_sec.append(self.long_press[i]['timeout'])
 
-        self.sw = SwitchListener(self.pin_sw, self.sw_callback,
+        self.sw = SwitchListener([self.pin_sw], self.sw_callback,
                                  timeout_sec=self.timeout_sec, debug=debug)
-        self.sw.start()
 
         self.led = Led(self.pin_led)
 
@@ -52,7 +51,7 @@ class demo:
             idx = event.timeout_idx
 
             if idx == 0:		# マルチクリック回数確定
-                if event.value == 'OFF':
+                if event.value == Switch.OFF:
                     self.led.off()
                     for i in range(event.push_count):
                         time.sleep(0.4)
