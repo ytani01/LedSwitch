@@ -130,6 +130,7 @@ class Switch(threading.Thread):
 
             # XXX ここまでやる必要はあるか？
             self.val = new_val * 0.5 + self.val * 0.5
+            val01 = -1
             if self.val > 0.7:
                 val01 = 1	# off
             if self.val < 0.3:
@@ -189,23 +190,30 @@ def cb(sw, event):
     event.print()
 
 def app(pin, debug):
-    logger.debug('pin=%d', pin)
+    logger.debug('pin=%s', pin)
 
-    sw = SwitchListener(pin, cb, debug=debug)
-    sw.start()
+    sw = []
+    for p in pin:
+        s = SwitchListener(p, cb, debug=debug)
+        s.start()
+        sw.append(s)
     while True:
         time.sleep(1)
 
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
-@click.argument('pin', metavar='<pin>', type=int, nargs=1)
+@click.argument('pin', metavar='<pin>', type=int, nargs=-1)
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
 def main(pin, debug):
     logger.setLevel(INFO)
     if debug:
         logger.setLevel(DEBUG)
+
+    if len(pin) == 0:
+        logger.error('pin=%s', pin)
+        return
 
     setup_GPIO()
     try:
