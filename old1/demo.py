@@ -10,25 +10,22 @@ import click
 
 class demo:
     def __init__(self, pin_led, pin_sw, debug=False):
-        print('pin_led:%d' % pin_led)
-        print('pin_sw :%d' % pin_sw)
-        
         self.pin_led = pin_led
         self.pin_sw  = pin_sw
 
         self.long_press = [
-            {'timeout':0.7, 'blink':{'on':1,    'off':0}},	# multi click
-            {'timeout':1,   'blink':{'on':0.2,  'off':0.04}},	# blink1
-            {'timeout':3,   'blink':{'on':0.1,  'off':0.04}},	# blink2
-            {'timeout':5,   'blink':{'on':0.02, 'off':0.04}},	# blink3
-            {'timeout':7,   'blink':{'on':0,    'off':0}}]	# end
+            {'timeout':0.7, 'blink':{'on':1,    'off':0}},
+            {'timeout':1,   'blink':{'on':0.2,  'off':0.04}},
+            {'timeout':3,   'blink':{'on':0.1,  'off':0.04}},
+            {'timeout':5,   'blink':{'on':0.04, 'off':0.04}},
+            {'timeout':7,   'blink':{'on':0,    'off':0}}]
 
         self.timeout_sec = []
         for i in range(len(self.long_press)):
             self.timeout_sec.append(self.long_press[i]['timeout'])
 
-        self.sw = Switch(self.pin_sw, self.timeout_sec, debug=debug)
-        self.sl = SwitchListener([self.sw], self.sw_callback, debug=debug)
+        self.sw = SwitchListener([self.pin_sw], self.sw_callback,
+                                 timeout_sec=self.timeout_sec, debug=debug)
 
         self.led = Led(self.pin_led)
 
@@ -41,7 +38,7 @@ class demo:
             time.sleep(1)
         self.led.off()
 
-    def sw_callback(self, event):
+    def sw_callback(self, sw, event):
         event.print()
 
         if event.name == 'pressed':
