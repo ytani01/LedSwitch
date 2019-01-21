@@ -31,7 +31,7 @@ def init_logger(name, debug):
     return l
 
 class RotaryEncoderListener(threading.Thread):
-    def __init__(self, pin, cb_func, sw_loop_interval=0.001, debug=False):
+    def __init__(self, pin, cb_func, sw_loop_interval=0.002, debug=False):
         self.logger = init_logger(__class__.__name__, debug)
         self.logger.debug('pin:%s', pin)
         self.logger.debug('sw_loop_interval:%.4f', sw_loop_interval)
@@ -39,14 +39,15 @@ class RotaryEncoderListener(threading.Thread):
         if len(pin) != 2:
             return None
 
-        self.pin = pin
-        self.cb_func = cb_func
+        self.pin              = pin
+        self.cb_func          = cb_func
         self.sw_loop_interval = sw_loop_interval
 
-        self.q = queue.Queue()
+        self.q                = queue.Queue()
 
-        self.rotenc = RotaryEncoder(self.pin, self.q, self.sw_loop_interval,
-                                    debug)
+        self.rotenc           = RotaryEncoder(self.pin, self.q,
+                                              self.sw_loop_interval,
+                                              debug)
 
         super().__init__(daemon=True)
 
@@ -75,7 +76,7 @@ class RotaryEncoder:
             return 'CCW'
         return ''
 
-    def __init__(self, pin, q, loop_interval=0.001, debug=False):
+    def __init__(self, pin, q, loop_interval, debug=False):
         self.logger = init_logger(__class__.__name__, debug)
         self.logger.debug('pin:%s', pin)
 
@@ -91,10 +92,9 @@ class RotaryEncoder:
             sw = Switch(p, timeout_sec=[], debug=debug)
             self.switch.append(sw)
         
-        self.stat = ['', '']
-        
-        self.sl = SwitchListener(self.switch, self.cb, self.loop_interval,
-                                 debug=debug)
+        self.stat = [-1, -1]
+        self.sl   = SwitchListener(self.switch, self.cb, self.loop_interval,
+                                   debug=debug)
 
     def cb(self, event):
         self.logger.debug('event.name:%s', event.name)
@@ -122,15 +122,14 @@ class RotaryEncoder:
         self.q.put(v)
 
 #####
-class app:
+class sample:
     def __init__(self, pin, debug):
         self.logger = init_logger(__class__.__name__, debug)
         self.logger.debug('pin=%s', pin)
 
-        self.pin = pin
+        self.pin       = pin
 
-        self.rel = RotaryEncoderListener(self.pin, self.cb, debug=debug)
-
+        self.rel       = RotaryEncoderListener(self.pin, self.cb, debug=debug)
         self.start_sec = time.time()
 
     def main(self):
@@ -156,7 +155,7 @@ def main(pin, debug):
 
     setup_GPIO()
     try:
-        app(pin, debug).main()
+        sample(pin, debug).main()
     finally:
         cleanup_GPIO()
 

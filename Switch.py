@@ -64,6 +64,7 @@ class SwitchTimer:
             
     def start(self):
         self.logger.debug('')
+
         if len(self.timeout_sec) == 0:
             self.logger.debug('ignored')
             self.stop()
@@ -74,6 +75,7 @@ class SwitchTimer:
 
     def stop(self):
         self.logger.debug('')
+
         self.start_sec   = -1
         self.timeout_idx = -1
 
@@ -113,6 +115,11 @@ class SwitchEvent():
         print('  push_count : %d' % self.push_count)
 
 class Switch:
+    '''
+    timeout_sec[0]  timeout(sec) for multi-click
+    timeout_sec[1:] timeouts(sec) for long-press (long-long-press ..)
+    '''
+        
     ON  = 0
     OFF = 1
     
@@ -134,18 +141,27 @@ class Switch:
 
         GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         
-        self.timer = SwitchTimer(self.timeout_sec, debug=debug)
-        
-        self.val = 1.0
+        self.timer      = SwitchTimer(self.timeout_sec, debug=debug)
+        self.val        = 1.0
         self.prev_onoff = self.OFF
         self.push_count = 0
 
+    def get_onoff(self):
+        new_val = GPIO.input(self.pin)
+
+        # ここまでやる？
+        self.val = new_val * 0.6 + self.val * 0.4
+
+        onoff = self.prev_onoff
+        if self.val > 0.7:
+            onoff = Switch.OFF
+        if self.val < 0.3:
+            onoff = Switch.ON
+
+        return onoff
+
 class SwitchWatcher(threading.Thread):
     def __init__(self, switch, eventq, loop_interval=0.02, debug=False):
-        '''
-        timeout_sec[0]  timeout(sec) for multi-click
-        timeout_sec[1:] timeouts(sec) for long-press (long-long-press ..)
-        '''
         self.logger = init_logger(__class__.__name__, debug)
         self.logger.debug('loop_interval:%.4f', loop_interval)
 
@@ -158,21 +174,11 @@ class SwitchWatcher(threading.Thread):
 
     def run(self):
         self.logger.debug('start')
-        
+
         while True:
             t1 = time.time()			# ロスタイム計算用
             for sw in self.switch:
-                new_val = GPIO.input(sw.pin)
-
-                # ここまでやる？
-                sw.val = new_val * 0.6 + sw.val * 0.4
-                self.logger.debug('sw.pin:%d, sw.val:%f', sw.pin, sw.val)
-
-                onoff  = sw.prev_onoff
-                if sw.val > 0.7:
-                    onoff = sw.OFF
-                if sw.val < 0.3:
-                    onoff = sw.ON
+                onoff = sw.get_onoff()
 
                 if onoff == sw.OFF:
                     idx = sw.timer.timeout_idx
@@ -182,55 +188,47 @@ class SwitchWatcher(threading.Thread):
                         sw.timer.stop()
 
                 if onoff != sw.prev_onoff:
-                    self.logger.debug('onoff=%d:%s',
-                                      onoff, sw.val2str(onoff))
+                    self.logger.debug('onoff=%d:%s', onoff, sw.val2str(onoff))
+                    sw.prev_onoff = onoff
 
-                    if onoff == sw.ON:	# pressed
+                    if onoff == sw.ON: # pressed
                         sw.push_count += 1
                         if sw.push_count == 1:
                             sw.timer.start()
 
                         e = SwitchEvent(sw.pin, 'pressed',
-                                        sw.timer.timeout_idx,
-                                        onoff,
+                                        sw.timer.timeout_idx, onoff,
                                         sw.push_count)
-                        self.eventq.put(e)
-
-                    if onoff == sw.OFF:	# released
+                    else: # released
                         e = SwitchEvent(sw.pin, 'released',
-                                        sw.timer.timeout_idx,
-                                        onoff,
+                                        sw.timer.timeout_idx, onoff,
                                         sw.push_count)
-                        self.eventq.put(e)
+                    self.eventq.put(e)
 
-                    sw.prev_onoff = onoff
-
-                if sw.timer.is_expired():
-                    self.logger.debug('timer.timeout_idx = %d',
-                                      sw.timer.timeout_idx)
-                    self.logger.debug('  push_count = %d', sw.push_count)
-                    self.logger.debug('  onoff      = %d', onoff)
-
+                while sw.timer.is_expired():
                     e = SwitchEvent(sw.pin, 'timer', sw.timer.timeout_idx,
                                     onoff, sw.push_count)
                     self.eventq.put(e)
 
                     sw.timer.next_timeout()
-                        
             
             t_loss = time.time() - t1			# ロスタイム計算
             t_sleep = self.loop_interval - t_loss
             if t_sleep > 0:
                 time.sleep(self.loop_interval - t_loss)
+            else:
+                self.logger.warning('t_loss=%f', t_loss)
                 
 #####
 class app:
-    def __init__(self, pin, debug):
+    def __init__(self, pin, debug=False):
         logger.setLevel(INFO)
         if debug:
             logger.setLevel(DEBUG)
 
         logger.debug('pin:%s', pin)
+
+        self.pin = pin
 
         sw = []
         for p in pin:
@@ -239,6 +237,11 @@ class app:
         sl = SwitchListener(sw, self.cb, debug=debug)
 
     def main(self):
+        if len(self.pin) < 1:
+            print('no pin')
+            return
+        
+        print('Ready: pin=%s' % str(self.pin))
         while True:
             time.sleep(1)
 
@@ -252,14 +255,9 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
 def main(pin, debug):
+    logger.setLevel(INFO)
     if debug:
         logger.setLevel(DEBUG)
-    else:
-        logger.setLevel(INFO)
-
-    if len(pin) == 0:
-        logger.error('pin=%s', pin)
-        return
 
     setup_GPIO()
     try:
