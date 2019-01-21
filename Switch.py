@@ -49,7 +49,15 @@ class SwitchListener(threading.Thread):
         self.logger.debug('start')
         while True:
             event = self.eventq.get()
+            if event == SwitchEvent.NULL:
+                break
             self.callback_func(event)
+
+    def stop(self):
+        self.logger.debug('')
+        self.sw.stop()
+        self.eventq.put(SwitchEvent.NULL)
+        self.join()
 
 class SwitchTimer:
     def __init__(self, timeout_sec=[0.7, 1, 3, 5, 7], debug=False):
@@ -95,7 +103,9 @@ class SwitchTimer:
         if self.timeout_idx >= len(self.timeout_sec):
             self.stop()
 
-class SwitchEvent():
+class SwitchEvent:
+    NULL = 0
+
     def __init__(self, pin, name, timeout_idx, value, push_count, debug=False):
         self.logger = init_logger(__class__.__name__, debug)
 
@@ -106,6 +116,30 @@ class SwitchEvent():
         self.timeout_idx = timeout_idx
         self.value       = value
         self.push_count  = push_count
+
+    def click_count(self):
+        self.logger.debug('')
+        
+        if self.name != 'timer':
+            return 0
+
+        if self.timeout_idx != 0:
+            return 0
+
+        if self.value == Switch.ON:
+            return 0
+        
+        return self.push_count
+    
+    def longpress_level(self):
+        self.logger.debug('')
+        
+        if self.name != 'timer':
+            return 0
+        if self.value == Switch.OFF:
+            return 0
+
+        return self.timeout_idx
 
     def print(self):
         print('pin: %d' % self.pin)
@@ -169,13 +203,14 @@ class SwitchWatcher(threading.Thread):
         self.eventq        = eventq
         self.loop_interval = loop_interval
 
+        self.loop_flag     = True
         super().__init__(daemon=True)
         self.start()
 
     def run(self):
         self.logger.debug('start')
 
-        while True:
+        while self.loop_flag:
             t1 = time.time()			# ロスタイム計算用
             for sw in self.switch:
                 onoff = sw.get_onoff()
@@ -218,6 +253,11 @@ class SwitchWatcher(threading.Thread):
                 time.sleep(self.loop_interval - t_loss)
             else:
                 self.logger.warning('t_loss=%f', t_loss)
+
+    def stop(self):
+        self.logger.debug('')
+        self.loop_flag = False
+        self.join()
                 
 #####
 class app:

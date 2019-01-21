@@ -30,6 +30,70 @@ def init_logger(name, debug):
         l.setLevel(INFO)
     return l
 
+class RotaryKey:
+    '''
+    callback_func(out_ch, cur_ch, fixed_flag)
+    '''
+    
+    CH_LIST = ' _-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    CH_BS   = '<BS>'
+    CH_ENT  = '<ENT>'
+
+    def __init__(self, pin_re, pin_sw, cb_func, chl=CH_LIST, debug=False):
+        self.logger = init_logger(__class__.__name__, debug)
+        self.logger.debug('pin_re:%s', pin_re)
+        self.logger.debug('pin_sw:%d', pin_sw)
+        self.logger.debug('chl   :%s', chl)
+
+        self.pin_re  = pin_re
+        self.pin_sw  = pin_sw
+        self.cb_func = cb_func
+        self.chl     = chl
+        
+        self.chl_len = len(self.chl)
+        self.chl_i   = 0
+        self.cur_ch  = self.CH_LIST[self.chl_i]
+        self.out_ch  = ''
+
+        self.rl = RotaryEncoderListener(self.pin_re, self.cb_re, debug=debug)
+        self.sw = Switch(self.pin_sw, debug=debug)
+        self.sl = SwitchListener([self.sw], self.cb_sw, debug=debug)
+
+    def cb_re(self, val):
+        self.logger.debug('val=%d:%s', val, RotaryEncoder.val2str(val))
+        self.chl_i += val
+        self.chl_i %= self.chl_len
+        self.cur_ch = self.chl[self.chl_i]
+        self.logger.debug('chl_i:%d, cur_ch:%s', self.chl_i, self.cur_ch)
+
+        self.cb_func(self.out_ch, self.cur_ch, False)
+
+    def cb_sw(self, event):
+        self.logger.debug('event=%s', event.name)
+
+        if event.name == 'pressed':
+            self.out_ch = self.cur_ch
+            return
+
+        if event.name == 'released':
+            return
+        
+        # 'timer' event
+        if event.longpress_level() > 0:
+            self.cb_func(self.CH_ENT, self.cur_ch, True)
+            self.out_ch = ''
+            return
+
+        if event.click_count() > 1:
+            self.cb_func(self.CH_BS, self.cur_ch, True)
+            self.out_ch = ''
+            return
+
+        if event.click_count() == 1:
+            self.cb_func(self.out_ch, self.cur_ch, True)
+            self.out_ch = ''
+
+
 class RotaryEncoderListener(threading.Thread):
     def __init__(self, pin, cb_func, sw_loop_interval=0.002, debug=False):
         self.logger = init_logger(__class__.__name__, debug)
@@ -62,11 +126,19 @@ class RotaryEncoderListener(threading.Thread):
         self.logger.debug('start')
         while True:
             v = self.q.get()
+            if v == RotaryEncoder.NULL:
+                break
             self.cb_func(v)
 
+    def stop(self):
+        self.logger.debug('')
+        self.q.put(RotaryEncoder.NULL)
+        self.join()
+
 class RotaryEncoder:
-    CW  = 1
-    CCW = -1
+    CW   = 1
+    CCW  = -1
+    NULL = 0
 
     @classmethod
     def val2str(cls, val):
@@ -127,25 +199,69 @@ class sample:
         self.logger = init_logger(__class__.__name__, debug)
         self.logger.debug('pin=%s', pin)
 
-        self.pin       = pin
+        self.pin_re    = pin[0:2]
+        self.pin_sw    = pin[2]
 
-        self.rel       = RotaryEncoderListener(self.pin, self.cb, debug=debug)
+        self.text      = ''
+
+    def main(self, debug):
+        print('### RotaryEncoderListener demo')
+
+        self.rel = RotaryEncoderListener(self.pin_re, self.cb_re, debug=debug)
+        self.sw  = Switch(self.pin_sw, debug=debug)
+        self.sl  = SwitchListener([self.sw], self.cb_sw, debug=debug)
         self.start_sec = time.time()
 
-    def main(self):
-        print('Ready')
-
-        while True:
+        self.loop_flag = True
+        while self.loop_flag:
             time.sleep(1)
 
-    def cb(self, v):
+        self.sl.stop()
+        self.rel.stop()
+
+        print('')
+        print('### RotaryKey demo')
+        self.rek = RotaryKey(self.pin_re, self.pin_sw, self.cb_rk, debug=debug)
+
+        self.loop_flag = True
+        while self.loop_flag:
+            time.sleep(1)
+
+        print('')
+        print('### Finished')
+
+    def cb_re(self, v):
         print('%.3f, %s' % (time.time() - self.start_sec,
                             RotaryEncoder.val2str(v)))
+
+    def cb_sw(self, event):
+        print('%.3f, ' % (time.time() - self.start_sec), end='')
+        event.print()
+        if event.name == 'timer' and event.timeout_idx == 1:
+            print('long pressed: %d' % event.pin)
+            self.loop_flag = False
+
+    def cb_rk(self, out_ch, cur_ch, fixed):
+        if fixed:
+            if out_ch == RotaryKey.CH_ENT:
+                print('>%s<' % self.text) # enter
+                if self.text == '': # finish
+                    self.loop_flag = False
+                    return
+                self.text = ''
+
+            elif out_ch == RotaryKey.CH_BS:
+                self.text = self.text[:-1]
+
+            else:       
+                self.text += out_ch
+                
+        print('%s[%s]' % (self.text, cur_ch))
 
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
-@click.argument('pin', metavar='pin1 pin2', type=int, nargs=2)
+@click.argument('pin', metavar='pin1 pin2', type=int, nargs=3)
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
 def main(pin, debug):
@@ -155,7 +271,7 @@ def main(pin, debug):
 
     setup_GPIO()
     try:
-        sample(pin, debug).main()
+        sample(pin, debug).main(debug)
     finally:
         cleanup_GPIO()
 
