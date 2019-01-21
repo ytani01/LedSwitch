@@ -29,15 +29,21 @@ def init_logger(name, debug):
     return l
 
 class SwitchListener(threading.Thread):
-    def __init__(self, switch, callback_func, sw_loop_interval=0.02,
+    '''
+    stop(): Dont't forget to call stop() when finished
+
+    callback function: cb_func(event) ... event: SwitchEvent class
+    '''
+
+    def __init__(self, switch, cb_func, sw_loop_interval=0.02,
                  debug=False):
         self.logger = init_logger(__class__.__name__, debug)
         self.logger.debug('sw_loop_interval:%.4f', sw_loop_interval)
             
-        self.switch        = switch
-        self.callback_func = callback_func
+        self.switch  = switch
+        self.cb_func = cb_func
 
-        self.eventq        = queue.Queue()
+        self.eventq  = queue.Queue()
 
         self.sw = SwitchWatcher(self.switch, self.eventq, sw_loop_interval,
                                 debug)
@@ -51,13 +57,15 @@ class SwitchListener(threading.Thread):
             event = self.eventq.get()
             if event == SwitchEvent.NULL:
                 break
-            self.callback_func(event)
+            self.cb_func(event)
+        self.logger.debug('end')
 
     def stop(self):
         self.logger.debug('')
         self.sw.stop()
         self.eventq.put(SwitchEvent.NULL)
         self.join()
+        self.logger.debug('join()')
 
 class SwitchTimer:
     def __init__(self, timeout_sec=[0.7, 1, 3, 5, 7], debug=False):
@@ -83,7 +91,6 @@ class SwitchTimer:
 
     def stop(self):
         self.logger.debug('')
-
         self.start_sec   = -1
         self.timeout_idx = -1
 
@@ -195,6 +202,10 @@ class Switch:
         return onoff
 
 class SwitchWatcher(threading.Thread):
+    '''
+    stop(): Don't forget to call stop() when finished
+    '''
+
     def __init__(self, switch, eventq, loop_interval=0.02, debug=False):
         self.logger = init_logger(__class__.__name__, debug)
         self.logger.debug('loop_interval:%.4f', loop_interval)
@@ -218,9 +229,9 @@ class SwitchWatcher(threading.Thread):
                 if onoff == sw.OFF:
                     idx = sw.timer.timeout_idx
                     if idx != 0:
-                        sw.push_count = 0
+                        sw.push_count = 0 # push_countクリア
                     if idx >= 1:
-                        sw.timer.stop()
+                        sw.timer.stop() # タイマーストップ
 
                 if onoff != sw.prev_onoff:
                     self.logger.debug('onoff=%d:%s', onoff, sw.val2str(onoff))
@@ -244,20 +255,22 @@ class SwitchWatcher(threading.Thread):
                     e = SwitchEvent(sw.pin, 'timer', sw.timer.timeout_idx,
                                     onoff, sw.push_count)
                     self.eventq.put(e)
-
                     sw.timer.next_timeout()
             
-            t_loss = time.time() - t1			# ロスタイム計算
+            t_loss = time.time() - t1	# ロスタイム計算
             t_sleep = self.loop_interval - t_loss
             if t_sleep > 0:
                 time.sleep(self.loop_interval - t_loss)
             else:
                 self.logger.warning('t_loss=%f', t_loss)
 
+        self.logger.debug('end')
+
     def stop(self):
         self.logger.debug('')
         self.loop_flag = False
         self.join()
+        self.logger.debug('join()')
                 
 #####
 class app:
