@@ -289,7 +289,7 @@ class sample:
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
-@click.argument('pin', metavar='pin1 pin2', type=int, nargs=3)
+@click.argument('pin', metavar='pin1 pin2 pin_sw', type=int, nargs=3)
 @click.option('--debug', '-d', 'debug', is_flag=True, default=False,
               help='debug flag')
 def main(pin, debug):
