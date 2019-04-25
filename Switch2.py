@@ -5,6 +5,7 @@
 import RPi.GPIO as GPIO
 import time
 import threading
+import queue
 
 import click
 from logging import getLogger, StreamHandler, Formatter, DEBUG, INFO, WARN
@@ -27,13 +28,23 @@ def get_logger(name, debug=False):
 
     return l
 
+
 #####
-class Switch1:
-    ON  = 0
-    OFF = 1
-    BOUNCE_TIME = 2
+class Switch1(threading.Thread):
+    BOUNCE_TIME = 20 # msec
+    EVENT_TOUT  = 0.5 # sec
+
+    VAL         = ['ON', 'OFF', 'TIMEOUT']
+    VAL_ON      = 0
+    VAL_OFF     = 1
+    VAL_TIMEOUT = 2
     
-    def __init__(self, pin, debug=False):
+    STAT        = ['ON', 'OFF', 'HOLD']
+    STAT_ON     = 0
+    STAT_OFF    = 1
+    STAT_HOLD   = 2
+    
+    def __init__(self, pin, bouncetime=BOUNCE_TIME, debug=False):
         self.debug = debug
         self.logger = get_logger(__class__.__name__, debug)
         self.logger.debug('pin : %d', pin)
@@ -44,34 +55,113 @@ class Switch1:
         GPIO.add_event_detect(self.pin, GPIO.BOTH, callback=self.handle,
                               bouncetime=self.BOUNCE_TIME)
 
-        self.prev_ms = 0
-        self.ms = 0
-        self.val = self.OFF
+        self.q      = queue.Queue()
+        self.eventq = queue.Queue()
 
-        self.sn = 0
+        self.stat     = self.STAT_OFF
 
-    def get(self):
+        self.t_on_start = 0
+
+        super().__init__(daemon=True)
+
+    def get_value(self):
         self.logger.debug('')
         val = GPIO.input(self.pin)
 
         return val
 
+    def get_event(self):
+        return self.eventq.get()
+
     def handle(self, pin):
-        self.sn += 1
-        self.logger.debug('[%04d] pin=%d', self.sn, pin)
+        ts = time.time()
+        v = self.get_value()
+        self.logger.debug('%.3f:%d:%s', ts, pin, self.VAL[v])
+        self.q.put([ts, v])
 
-        ms = time.time() * 1000
-        v = self.get()
+    def run(self):
+        while True:
+            try:
+                [ts, v] = self.q.get(timeout=.5)
+            except queue.Empty:
+                # timeout
+                ts = time.time()
+                v  = self.VAL_TIMEOUT
 
-        if v == self.val:
-            print('![%04d] %6d: pin(%d): %s' %
-                  (self.sn, ms - self.ms, pin, self.val2str(1 - v)))
-        self.val = v
-            
-        print('[%04d] %6d: pin(%d): %s' %
-              (self.sn, ms - self.ms, pin, self.val2str(self.val)))
+            cur_val  = self.get_value()
+            ev_out = False
 
-        self.ms = ms
+            self.logger.debug('%d stat:%s v:%s cur_val:%s',
+                              ts, self.STAT[self.stat], self.VAL[v], self.VAL[cur_val])
+
+            prev_stat = self.stat
+            if self.stat == self.STAT_ON:
+                if v == self.VAL_ON:
+                    pass
+                elif v == self.VAL_OFF:
+                    self.stat = self.STAT_OFF
+                    ev_out = True
+                elif v == self.VAL_TIMEOUT:
+                    if cur_val == self.VAL_ON:
+                        self.stat = self.STAT_HOLD
+                        ev_out = True
+                    elif cur_val == self.VAL_OFF:
+                        self.stat = self.STAT_OFF
+                        ev_out = True
+                    else:
+                        pass # error?
+                else:
+                    pass # error?
+
+            elif self.stat == self.STAT_OFF:
+                if v == self.VAL_ON:
+                    self.stat = self.STAT_ON
+                    self.on_start = time.time()
+                    ev_out = True
+                elif v == self.VAL_OFF:
+                    pass
+                elif v == self.VAL_TIMEOUT:
+                    if cur_val == self.VAL_ON:
+                        self.stat = self.STAT_ON
+                        ev_out = True
+                    elif cur_val == self.VAL_OFF:
+                        pass
+                    else:
+                        pass # error?
+                else:
+                    pass # error?
+
+            elif self.stat == self.STAT_HOLD:
+                if v == self.VAL_ON:
+                    self.stat = self.STAT_HOLD
+                    ev_out = True
+                elif v == self.VAL_OFF:
+                    self.stat = self.STAT_OFF
+                    ev_out = True
+                elif v == self.VAL_TIMEOUT:
+                    if cur_val == self.VAL_ON:
+                        self.stat = self.STAT_HOLD
+                        ev_out = True
+                    elif cur_val == self.VAL_OFF:
+                        self.stat = self.STAT_OFF
+                        ev_out = True
+                    else:
+                        pass # error?
+                else: # error?
+                    pass
+
+            if ev_out:
+                if prev_stat != self.STAT_ON and self.stat == self.STAT_ON:
+                    self.on_start = ts
+                tm_on = ts - self.on_start
+                event = {'ts': ts, 'tm_on': tm_on, 'val': self.stat}
+                self.logger.debug('%.3f %s %.3f',
+                                  event['ts'], self.STAT[event['val']], event['tm_on'])
+                while self.eventq.full():
+                    ev = self.get_event()
+                    self.logger.warning('get and ignore event: %s', str(ev))
+                    
+                self.eventq.put(event)
 
     def end(self):
         self.logger.debug('')
@@ -79,11 +169,7 @@ class Switch1:
 
     @classmethod
     def val2str(cls, val):
-        if val == cls.ON:
-            return 'ON'
-        if val == cls.OFF:
-            return 'OFF'
-        return ''
+        return cls.VAL[val]
 
 
 #####
@@ -100,34 +186,25 @@ class sample:
 
         self.sw = []
         for p in self.pins:
-            self.sw.append(Switch1(p, self.debug))
+            self.sw.append(Switch1(p, debug=self.debug))
 
 
     def main(self):
         self.logger.debug('')
-        
+
+        self.sw[0].start()
+
         while True:
-            #print(time.strftime('%Y/%m/%d(%a) %H:%M:%S'))
-            #print(Switch1.val2str(self.sw[0].get()))
-            time.sleep(1)
-            
+            ev = self.sw[0].get_event()
+            print('%.3f %s %.3f' % (ev['ts'], Switch1.STAT[ev['val']], ev['tm_on']))
+
 
     def end(self):
         self.logger.debug('')
         for i in range(len(self.sw)):
             self.sw[i].end()
-            
         GPIO.cleanup()
-        
 
-    # sample callback function
-    def sample_cb_func(self, dev, code, value):
-        self.logger.debug('')
-        
-        print('dev=%d, code=%d:%s, value=%d:%s' % (dev,
-                                                   code, AbShutter.keycode2str(code),
-                                                   value, AbShutter.val2str(value)))
-        
 
 #####
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
