@@ -30,8 +30,33 @@ def get_logger(name, debug=False):
     return l
 
 #####
-#class SwitchListener:
+class SwitchListener:
+    def __init__(self, debug=False):
+        self.debug = debug
+        self.logger = get_logger(self.__name__, self.debug)
+        self.logger.debug('')
 
+        super().__init__()
+
+    def run(self):
+        self.logger.debug('')
+        
+        while True:
+            pass
+
+    def _send_msg(self, msg):
+        self.logger.debug('')
+
+    def send(self, msg_type, msg_data):
+        self.logger.debug('msg_type:%s, msg_data:%s', msg_type, msg_data)
+        msg = {'type': msg_type, 'data':msg_data}
+        _send_msg(msg)
+
+    def end(self):
+        self.logger.debug('')
+        self.send_msg
+        
+        
 #####
 class Switch:
     ON      = 0
